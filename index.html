@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Book Chatbot — Groq AI (Free)</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (typeof pdfjsLib !== 'undefined') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <div class="app-brand">
+        <i class="ti ti-books"></i>
+        Book<span>Bot</span>
+      </div>
+      <button class="new-chat-btn"
+        onclick="App.addChat(App.state.activeFolderId || App.state.folders[0]?.id)">
+        <i class="ti ti-plus"></i> New chat
+      </button>
+    </div>
+
+    <div class="sidebar-body" id="sidebarBody"></div>
+
+    <button class="add-folder-btn" onclick="App.openFolderModal()">
+      <i class="ti ti-folder-plus"></i> New folder / book
+    </button>
+
+    <div class="sidebar-footer">
+      <div class="user-row">
+        <div class="avatar">U</div>
+        <span>My workspace</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- Header -->
+    <div class="chat-header">
+      <i class="ti ti-message-circle" style="font-size:20px;color:var(--text-3)"></i>
+      <div class="chat-header-info">
+        <div class="chat-title" id="chatTitle">Select a chat</div>
+        <div class="chat-subtitle" id="chatSubtitle">Upload a document and start chatting</div>
+      </div>
+      <span id="sourceBadge">No document</span>
+    </div>
+
+    <!-- Groq API Key Bar -->
+    <div class="api-bar">
+      <label><i class="ti ti-key" style="vertical-align:-2px"></i> Groq API Key:</label>
+      <input type="password" id="apiKeyInput" placeholder="gsk_xxxxxxxxxxxxxxxxxxxxxxxx">
+      <a href="https://console.groq.com/keys" target="_blank">
+        Get free key ↗
+      </a>
+    </div>
+
+    <!-- Upload Bar -->
+    <div class="upload-bar">
+      <label>Document:</label>
+      <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
+        <i class="ti ti-upload"></i> Upload PDF / TXT
+      </button>
+      <input type="file" id="fileInput" accept=".pdf,.txt" style="display:none">
+      <input type="text" id="topicInput" class="topic-input"
+        placeholder="Topic (e.g. History, Science, Law…)">
+    </div>
+
+    <!-- Messages -->
+    <div class="messages" id="messages">
+      <div class="empty-state">
+        <i class="ti ti-book-2"></i>
+        <div class="empty-title">Welcome to BookBot</div>
+        <div>1. Enter your free Groq API key above</div>
+        <div>2. Create a folder</div>
+        <div>3. Upload a PDF or TXT book</div>
+        <div>4. Start chatting!</div>
+      </div>
+    </div>
+
+    <!-- Input -->
+    <div class="input-area">
+      <div class="input-row">
+        <textarea id="msgInput" rows="1"
+          placeholder="Ask something about your document…"></textarea>
+        <button class="send-btn" id="sendBtn" onclick="App.sendMessage()"
+          disabled aria-label="Send">
+          <i class="ti ti-send" style="font-size:15px"></i>
+        </button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- New Folder Modal -->
+<div class="modal-bg" id="folderModal">
+  <div class="modal">
+    <h3>New folder</h3>
+    <input type="text" id="folderNameInput"
+      placeholder="e.g. Physics Book, Law Notes…"
+      onkeydown="if(event.key==='Enter') App.submitFolder()">
+    <div class="modal-btns">
+      <button onclick="App.closeFolderModal()">Cancel</button>
+      <button class="primary" onclick="App.submitFolder()">Create</button>
+    </div>
+  </div>
+</div>
+
+<script src="storage.js"></script>
+<script src="fileHandler.js"></script>
+<script src="api.js"></script>
+<script src="app.js"></script>
+<script>App.init();</script>
+
+</body>
+</html>
