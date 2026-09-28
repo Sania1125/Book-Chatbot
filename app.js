@@ -6,10 +6,12 @@ const App = {
     chats: {},
     activeFolderId: null,
     activeChatId: null,
-    isLoading: false
+    isLoading: false,
+    isUploading: false
   },
 
-  init() {
+  async init() {
+    await Storage.init();
     this.state.folders = Storage.getFolders();
     this.state.chats = Storage.getChats();
 
@@ -29,6 +31,8 @@ const App = {
       const folderChats = this.state.chats[firstFolder.id] || [];
       if (folderChats.length > 0) {
         this.selectChat(firstFolder.id, folderChats[0].id);
+      } else {
+        this.addChat(firstFolder.id);
       }
     }
   },
@@ -42,7 +46,7 @@ const App = {
       el.style.height = 'auto';
       el.style.height = Math.min(el.scrollHeight, 120) + 'px';
       document.getElementById('sendBtn').disabled =
-        !el.value.trim() || !this.state.activeChatId || this.state.isLoading;
+        !el.value.trim() || !this.state.activeChatId || this.state.isLoading || this.state.isUploading;
     });
     document.getElementById('fileInput').addEventListener('change', e => {
       const file = e.target.files[0];
@@ -57,7 +61,7 @@ const App = {
 
   // --- FOLDERS ---
   createFolder(name) {
-    const id = 'f' + Date.now();
+    const id = 'f' + crypto.randomUUID();
     const folder = { id, name, open: true };
     this.state.folders.push(folder);
     this.state.chats[id] = [];
@@ -77,8 +81,8 @@ const App = {
   // --- CHATS ---
   addChat(folderId) {
     if (!folderId) { this.showToast('Select a folder first.', true); return; }
-    const id = 'c' + Date.now();
-    const chat = { id, title: 'New chat', messages: [] };
+    const id = 'c' + crypto.randomUUID();
+    const chat = { id, title: 'New chat', messages: [], sourceVersion: Storage.getSource(folderId)?.uploadedAt || null };
     if (!this.state.chats[folderId]) this.state.chats[folderId] = [];
     this.state.chats[folderId].unshift(chat);
     const f = this.state.folders.find(x => x.id === folderId);
@@ -95,7 +99,7 @@ const App = {
     this.state.activeChatId = chatId;
     this.render();
     this.renderChatArea();
-    document.getElementById('sendBtn').disabled = !chatId;
+    document.getElementById('sendBtn').disabled = !chatId || this.state.isLoading || this.state.isUploading;
   },
 
   getActiveChat() {
@@ -110,23 +114,29 @@ const App = {
 
   // --- FILE UPLOAD ---
   async handleFileUpload(file) {
+    if (this.state.isLoading || this.state.isUploading) { this.showToast('Please wait for the current operation to finish.', true); return; }
     if (!this.state.activeFolderId) { this.showToast('Select a folder first.', true); return; }
+    const folderId = this.state.activeFolderId;
+    const topic = document.getElementById('topicInput').value.trim() || 'General';
+    this.state.isUploading = true;
     this.showToast('Reading file...');
     try {
-      const text = await FileHandler.extractText(file);
-      const trimmed = FileHandler.trimContext(text);
-      const topic = document.getElementById('topicInput').value.trim() || 'General';
-      const sourceData = { name: file.name, topic, text: trimmed, uploadedAt: new Date().toLocaleString() };
-      Storage.saveSource(this.state.activeFolderId, sourceData);
-      const folder = this.getActiveFolder();
+      const extracted = await FileHandler.extractDocument(file);
+      const sourceData = { ...extracted, name: file.name, topic, uploadedAt: crypto.randomUUID() };
+      Retrieval.index(sourceData);
+      await Storage.saveSource(folderId, sourceData);
+      const folder = this.state.folders.find(f => f.id === folderId);
       if (folder) { folder.sourceName = file.name; Storage.saveFolders(this.state.folders); }
       this.render();
       this.renderChatArea();
-      this.showToast(`"${file.name}" uploaded!`);
-      const folderChats = this.state.chats[this.state.activeFolderId] || [];
-      if (folderChats.length === 0) this.addChat(this.state.activeFolderId);
+      this.showToast(`"${file.name}" uploaded! ${extracted.warnings.join(' ')}`);
+      // Old conversations remain readable, but cannot be used with a replacement book.
+      if (this.state.activeFolderId === folderId) this.addChat(folderId);
     } catch (err) {
       this.showToast('Error: ' + err.message, true);
+    } finally {
+      this.state.isUploading = false;
+      document.getElementById('sendBtn').disabled = !document.getElementById('msgInput').value.trim() || this.state.isLoading;
     }
   },
 
@@ -134,7 +144,7 @@ const App = {
   async sendMessage() {
     const input = document.getElementById('msgInput');
     const text = input.value.trim();
-    if (!text || this.state.isLoading || !this.state.activeChatId) return;
+    if (!text || this.state.isLoading || this.state.isUploading || !this.state.activeChatId) return;
 
     const apiKey = document.getElementById('apiKeyInput').value.trim();
     if (!apiKey) { this.showToast('Enter your Groq API key first!', true); return; }
@@ -142,6 +152,12 @@ const App = {
     const chat = this.getActiveChat();
     if (!chat) return;
     const sourceData = Storage.getSource(this.state.activeFolderId);
+    if (!sourceData) { this.showToast('Upload a document first.', true); return; }
+    if (chat.messages.length && chat.sourceVersion !== sourceData.uploadedAt) {
+      this.showToast('This chat belongs to an earlier document. Start a new chat for the current book.', true); return;
+    }
+    chat.sourceVersion = sourceData.uploadedAt;
+    try { Retrieval.index(sourceData); } catch (err) { this.showToast(err.message, true); return; }
 
     chat.messages.push({ role: 'user', content: text });
     if (chat.title === 'New chat') chat.title = text.slice(0, 30) + (text.length > 30 ? '…' : '');
@@ -153,19 +169,19 @@ const App = {
 
     this.renderMessages(chat.messages);
     this.showTyping();
-    Storage.saveChats(this.state.chats);
     this.render();
 
     try {
+      Storage.saveChats(this.state.chats);
       const reply = await API.sendMessage(chat.messages, sourceData, apiKey);
       chat.messages.push({ role: 'assistant', content: reply });
       Storage.saveChats(this.state.chats);
     } catch (err) {
-      chat.messages.push({ role: 'assistant', content: '⚠️ Error: ' + err.message });
+      this.showToast(err.message, true);
     }
 
     this.removeTyping();
-    this.renderMessages(chat.messages);
+    if (this.getActiveChat() === chat) this.renderMessages(chat.messages);
     this.state.isLoading = false;
     document.getElementById('sendBtn').disabled = false;
     document.getElementById('msgInput').focus();
@@ -190,15 +206,15 @@ const App = {
         <div class="folder-header ${f.open ? 'open' : ''}" onclick="App.toggleFolder('${f.id}')">
           <i class="ti ti-chevron-right"></i>
           <i class="ti ti-folder${f.open ? '-open' : ''}"></i>
-          <span class="folder-name">${f.name}</span>
-          ${source ? `<span class="source-pill">${source.name.slice(0,14)}…</span>` : ''}
+          <span class="folder-name">${this.escHtml(f.name)}</span>
+          ${source ? `<span class="source-pill">${this.escHtml(source.name.slice(0,14))}…</span>` : ''}
         </div>
         <div class="folder-chats ${f.open ? 'open' : ''}">
           ${chats.map(c => `
             <div class="chat-item ${c.id === this.state.activeChatId ? 'active' : ''}"
               onclick="App.selectChat('${f.id}','${c.id}')">
               <i class="ti ti-message"></i>
-              <span>${c.title}</span>
+              <span>${this.escHtml(c.title)}</span>
             </div>`).join('')}
           <div class="chat-item add-chat" onclick="App.addChat('${f.id}')">
             <i class="ti ti-plus"></i><span>New chat</span>
@@ -225,7 +241,7 @@ const App = {
     }
     document.getElementById('chatTitle').textContent = chat.title;
     document.getElementById('chatSubtitle').textContent =
-      `${folder?.name || ''} ${source ? '· ' + source.name : '· No document uploaded'}`;
+      `${folder?.name || ''} ${source ? '· ' + source.name : '· No document uploaded'}${source?.warnings?.length ? ' · ' + source.warnings.join(' ') : ''}${chat.messages.length && chat.sourceVersion !== source?.uploadedAt ? ' · Earlier document: start a new chat' : ''}`;
     this.renderMessages(chat.messages);
   },
 
@@ -301,7 +317,8 @@ const App = {
   submitFolder() {
     const name = document.getElementById('folderNameInput').value.trim();
     if (!name) return;
-    this.createFolder(name);
+    const folder = this.createFolder(name);
+    this.addChat(folder.id);
     this.closeFolderModal();
   }
 };

@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
   <script>
     if (typeof pdfjsLib !== 'undefined') {
       pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -71,9 +72,9 @@
     <div class="upload-bar">
       <label>Document:</label>
       <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
-        <i class="ti ti-upload"></i> Upload PDF / TXT
+        <i class="ti ti-upload"></i> Upload document
       </button>
-      <input type="file" id="fileInput" accept=".pdf,.txt" style="display:none">
+      <input type="file" id="fileInput" accept=".pdf,.txt,.md,.docx" style="display:none">
       <input type="text" id="topicInput" class="topic-input"
         placeholder="Topic (e.g. History, Science, Law…)">
     </div>
@@ -85,7 +86,7 @@
         <div class="empty-title">Welcome to BookBot</div>
         <div>1. Enter your free Groq API key above</div>
         <div>2. Create a folder</div>
-        <div>3. Upload a PDF or TXT book</div>
+        <div>3. Upload a searchable PDF, TXT, MD or DOCX book</div>
         <div>4. Start chatting!</div>
       </div>
     </div>
@@ -121,9 +122,10 @@
 
 <script src="storage.js"></script>
 <script src="fileHandler.js"></script>
+<script src="retrieval.js"></script>
 <script src="api.js"></script>
 <script src="app.js"></script>
-<script>App.init();</script>
+<script>App.init().catch(error => App.showToast(error.message, true));</script>
 
 </body>
 </html>
